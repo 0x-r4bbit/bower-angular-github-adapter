@@ -1,0 +1,8 @@
+{
+  "name": "angular-github-adapter",
+  "version": "0.1.1",
+  "main": "./angular-github-adapter.js",
+  "dependencies": {
+    "angular": "1.0.7"
+  }
+}
