@@ -1,6 +1,6 @@
 angular.module('pascalprecht.github-adapter', ['ng']);
 angular.module('pascalprecht.github-adapter').provider('$github', function () {
-  var $username, $password, $authType;
+  var $username, $password, $authType, $token;
   this.username = function (name) {
     if (!name) {
       return $username;
@@ -19,20 +19,44 @@ angular.module('pascalprecht.github-adapter').provider('$github', function () {
     }
     $authType = type;
   };
+  this.token = function (token) {
+    if (!token) {
+      return $token;
+    }
+    $token = token;
+  };
   this.$get = [
     '$q',
     '$githubRepository',
+    '$githubIssues',
     '$githubUser',
     '$githubGist',
-    function ($q, $githubRepository, $githubUser, $githubGist) {
-      var github = new Github({
+    function ($q, $githubRepository, $githubIssues, $githubUser, $githubGist) {
+      var config = {};
+      if ($username && $password) {
+        config = {
           username: $username,
           password: $password,
-          auth: $authType
-        });
+          auth: $authType || 'basic'
+        };
+      }
+      if ($token) {
+        config.token = $token;
+      }
+      var github = new Github(config);
       var $github = {};
+      $github.setCreds = function (username, password, authType) {
+        github = new Github({
+          username: username,
+          password: password,
+          auth: authType
+        });
+      };
       $github.getRepo = function (username, reponame) {
         return $q.when($githubRepository(github.getRepo(username, reponame)));
+      };
+      $github.getIssues = function (username, reponame) {
+        return $q.when($githubIssues(github.getIssues(username, reponame)));
       };
       $github.getUser = function () {
         return $q.when($githubUser(github.getUser()));
@@ -44,6 +68,7 @@ angular.module('pascalprecht.github-adapter').provider('$github', function () {
     }
   ];
 });
+/*jslint es5: true */
 angular.module('pascalprecht.github-adapter').factory('$githubGist', [
   '$q',
   function ($q) {
@@ -109,11 +134,44 @@ angular.module('pascalprecht.github-adapter').factory('$githubGist', [
     };
   }
 ]);
+angular.module('pascalprecht.github-adapter').factory('$githubIssues', [
+  '$q',
+  function ($q) {
+    return function (issues) {
+      var issuesPromiseAdapter = {
+          list: function (options) {
+            var deferred = $q.defer();
+            issues.list(options, function (err, res) {
+              if (err) {
+                deferred.reject(err);
+              } else {
+                deferred.resolve(res);
+              }
+            });
+            return deferred.promise;
+          }
+        };
+      return issuesPromiseAdapter;
+    };
+  }
+]);
 angular.module('pascalprecht.github-adapter').factory('$githubRepository', [
   '$q',
   function ($q) {
     return function (repo) {
       var repositoryPromiseAdapter = {
+          branch: function (oldBranch, newBranch) {
+            var deferred = $q.defer();
+            var args = [].push.call(arguments, function (err) {
+                if (err) {
+                  deferred.reject(err);
+                } else {
+                  deferred.resolve();
+                }
+              });
+            repo.branch.apply(this, args);
+            return deferred.promise;
+          },
           commit: function (parent, tree, message) {
             var deferred = $q.defer();
             repo.commit(parent, tree, message, function (err, sha) {
@@ -125,9 +183,9 @@ angular.module('pascalprecht.github-adapter').factory('$githubRepository', [
             });
             return deferred.promise;
           },
-          contents: function (path) {
+          contents: function (branch, path) {
             var deferred = $q.defer();
-            repo.contents(path, function (err, contents) {
+            repo.contents(branch, path, function (err, contents) {
               if (err) {
                 deferred.reject(err);
               } else {
@@ -183,6 +241,17 @@ angular.module('pascalprecht.github-adapter').factory('$githubRepository', [
                 deferred.reject(err);
               } else {
                 deferred.resolve();
+              }
+            });
+            return deferred.promise;
+          },
+          getCommits: function (options) {
+            var deferred = $q.defer();
+            repo.getCommits(options, function (err, repo) {
+              if (err) {
+                deferred.reject(err);
+              } else {
+                deferred.resolve(repo);
               }
             });
             return deferred.promise;
@@ -329,6 +398,27 @@ angular.module('pascalprecht.github-adapter').factory('$githubRepository', [
               }
             });
             return deferred.promise;
+          },
+          listPulls: function (state) {
+            var deferred = $q.defer();
+            repo.listPulls(state, function (err, pulls) {
+              if (err) {
+                deferred.reject(err);
+              } else {
+                deferred.resolve(pulls);
+              }
+            });
+          },
+          getPull: function (number) {
+            var deferred = $q.defer();
+            repo.getPull(number, function (err, pull) {
+              if (err) {
+                deferred.reject(err);
+              } else {
+                deferred.resolve(pull);
+              }
+            });
+            return deferred.promise;
           }
         };
       return repositoryPromiseAdapter;
@@ -341,9 +431,22 @@ angular.module('pascalprecht.github-adapter').factory('$githubUser', [
   function ($q, $rootScope) {
     return function (user) {
       var userPromiseAdapter = {
-          gists: function (username) {
+          notifications: function () {
             var deferred = $q.defer();
-            user.gists(username, function (err, data) {
+            user.notifications(function (err, data) {
+              $rootScope.$apply(function () {
+                if (err) {
+                  deferred.reject(err);
+                } else {
+                  deferred.resolve(data);
+                }
+              });
+            });
+            return deferred.promise;
+          },
+          gists: function () {
+            var deferred = $q.defer();
+            user.gists(function (err, data) {
               $rootScope.$apply(function () {
                 if (err) {
                   deferred.reject(err);
